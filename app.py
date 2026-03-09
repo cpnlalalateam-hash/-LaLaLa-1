@@ -2,9 +2,9 @@ import streamlit as st
 import itertools
 import pandas as pd
 
-# -------------------------------
+# ----------------------------
 # ページ設定
-# -------------------------------
+# ----------------------------
 
 st.set_page_config(
     page_title="LaLaLa式・裏読みAI PRO",
@@ -13,9 +13,9 @@ st.set_page_config(
 
 st.title("🏇 LaLaLa式・究極の裏読みAI PRO")
 
-# -------------------------------
-# SIDEBAR
-# -------------------------------
+# ----------------------------
+# サイドバー：オッズ入力
+# ----------------------------
 
 st.sidebar.header("① 5大オッズ")
 
@@ -25,16 +25,238 @@ ex_o = st.sidebar.number_input("馬単", value=7.0, step=0.1)
 tr_o = st.sidebar.number_input("3連複", value=8.0, step=0.1)
 tf_o = st.sidebar.number_input("3連単", value=15.0, step=1.0)
 
-st.sidebar.header("② 人気馬の評判")
+# ----------------------------
+# 記事トーン
+# ----------------------------
+
+st.sidebar.header("② 一番人気の評判")
 
 sentiment = st.sidebar.selectbox(
     "記事トーン",
     ["絶賛（死角なし）", "普通（一長一短）", "不安（疑問あり）"]
 )
 
+# ----------------------------
+# 馬番入力
+# ----------------------------
+
 st.sidebar.header("③ 馬番（人気順）")
 
 h_in = st.sidebar.text_input(
+    "馬番をカンマ区切り",
+    "1,2,3,4,5,6,7,8,9,10"
+)
+
+h_list = [h.strip() for h in h_in.split(",") if h.strip() != ""]
+
+# ----------------------------
+# 入力チェック
+# ----------------------------
+
+if len(h_list) < 5:
+    st.error("⚠ 最低5頭入力してください")
+    st.stop()
+
+if len(set(h_list)) != len(h_list):
+    st.error("⚠ 馬番が重複しています")
+    st.stop()
+
+# ----------------------------
+# 印
+# ----------------------------
+
+st.sidebar.header("④ LaLaLa印")
+
+m1 = st.sidebar.selectbox("◎ 本命", h_list, index=0)
+m2 = st.sidebar.selectbox("○ 対抗", h_list, index=1)
+m3 = st.sidebar.selectbox("▲ 黒三角", h_list, index=2)
+m4 = st.sidebar.selectbox("△ 白三角", h_list, index=3)
+m5 = st.sidebar.selectbox("× ペケ", h_list, index=4)
+
+marks = {
+    "◎": m1,
+    "○": m2,
+    "▲": m3,
+    "△": m4,
+    "×": m5
+}
+
+# ----------------------------
+# 資金管理
+# ----------------------------
+
+st.sidebar.header("⑤ 資金管理")
+
+budget = st.sidebar.number_input("予算", value=5000)
+unit = st.sidebar.number_input("1点金額", value=100)
+
+# ----------------------------
+# 解析ロジック
+# ----------------------------
+
+def analyze_market(w, qr, ex, tr, tf, sent):
+
+    score = 0
+
+    if w >= 2:
+        score += 1
+
+    if qr >= 7:
+        score += 1
+
+    if ex >= 15:
+        score += 1
+
+    if tr >= 15:
+        score += 1
+
+    if tf >= 30:
+        score += 1
+
+    if sent == "絶賛（死角なし）":
+        score += 1
+
+    if score == 0:
+        return "鉄板", "本命信頼"
+
+    elif score <= 2:
+        return "標準", "平均レース"
+
+    elif score <= 4:
+        return "波乱", "本命危険"
+
+    else:
+        return "崩壊", "人気崩壊"
+
+status, comment = analyze_market(
+    w_o, qr_o, ex_o, tr_o, tf_o, sentiment
+)
+
+# ----------------------------
+# オッズ歪み指数
+# ----------------------------
+
+distortion = (
+    (qr_o / w_o) +
+    (ex_o / qr_o) +
+    (tr_o / ex_o) +
+    (tf_o / tr_o)
+)
+
+# ----------------------------
+# AI解析表示
+# ----------------------------
+
+st.subheader("📊 AI市場解析")
+
+col1, col2 = st.columns(2)
+
+with col1:
+
+    st.metric("レース判定", status)
+    st.metric("オッズ歪み指数", round(distortion, 2))
+
+with col2:
+
+    st.info(comment)
+
+# ----------------------------
+# 買い目生成
+# ----------------------------
+
+if st.button("🚀 買い目生成"):
+
+    honmei = marks["◎"]
+
+    ana = [
+        marks["○"],
+        marks["▲"],
+        marks["△"],
+        marks["×"]
+    ]
+
+    marked_values = set(marks.values())
+
+    unmarked = [
+        h for h in h_list
+        if h not in marked_values
+    ]
+
+    g_bd_opp = [
+        marks["△"],
+        marks["×"]
+    ] + unmarked
+
+    # A：3連複BOX
+    A = list(itertools.combinations(ana, 3))
+
+    # B：3連複軸
+    B = [
+        tuple(sorted((honmei, p[0], p[1])))
+        for p in itertools.combinations(g_bd_opp, 2)
+    ]
+
+    # C：馬連BOX
+    C = list(itertools.combinations(ana, 2))
+
+    # D：馬連軸
+    D = [
+        (honmei, opp)
+        for opp in g_bd_opp
+    ]
+
+    total = len(A) + len(B) + len(C) + len(D)
+
+    st.subheader("🎯 買い目")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+
+        st.write(f"A：3連複BOX ({len(A)}点)")
+        st.code("\n".join([f"{a}-{b}-{c}" for a, b, c in A]))
+
+        st.write(f"C：馬連BOX ({len(C)}点)")
+        st.code("\n".join([f"{a}-{b}" for a, b in C]))
+
+    with col2:
+
+        st.write(f"B：3連複◎軸 ({len(B)}点)")
+        st.code("\n".join([f"{a}-{b}-{c}" for a, b, c in B]))
+
+        st.write(f"D：馬連◎軸 ({len(D)}点)")
+        st.code("\n".join([f"{a}-{b}" for a, b in D]))
+
+    # ----------------------------
+    # 投資計算
+    # ----------------------------
+
+    invest = total * unit
+
+    st.subheader("💰 投資計算")
+
+    st.write(f"総点数：{total}")
+    st.write(f"投資額：{invest}円")
+
+    if invest > budget:
+        st.error("⚠ 予算オーバー")
+    else:
+        st.success("予算内です")
+
+# ----------------------------
+# 印表示
+# ----------------------------
+
+st.divider()
+
+df = pd.DataFrame({
+    "印": list(marks.keys()),
+    "馬番": list(marks.values())
+})
+
+st.subheader("印一覧")
+
+st.table(df)h_in = st.sidebar.text_input(
     "10頭をカンマ区切り",
     "1,2,3,4,5,6,7,8,9,10"
 )
